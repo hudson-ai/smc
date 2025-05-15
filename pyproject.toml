@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "guidance",
     "llama-cpp-python>=0.3.9",
     "llguidance>=0.7.19",
     "numpy>=2.2.5",
@@ -16,3 +17,6 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+guidance = { git = "https://github.com/guidance-ai/guidance.git" }
