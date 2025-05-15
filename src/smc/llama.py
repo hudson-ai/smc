@@ -27,7 +27,7 @@ def generate_parallel(
         batch.n_seq_id[i] = 1
         batch.logits[i] = False
 
-    batch.logits[batch.n_tokens - 1] = True
+    batch.logits[tokens_len - 1] = True
 
     if llama_cpp.llama_decode(model.ctx, batch) != 0:
         print("Error decoding")
@@ -38,7 +38,7 @@ def generate_parallel(
     streams = [b""] * n_parallel
     i_batch = [batch.n_tokens - 1] * n_parallel
 
-    n_cur = batch.n_tokens
+    n_cur = tokens_len
     n_decode = 0
 
     while n_cur <= n_len:
@@ -59,7 +59,7 @@ def generate_parallel(
                 )
             )
 
-            if new_token_id == llama_cpp.llama_token_eos(model.ctx) or n_cur == n_len:
+            if new_token_id == model.token_eos() or n_cur == n_len:
                 i_batch[i] = -1
                 continue
 
@@ -84,6 +84,7 @@ def generate_parallel(
         if llama_cpp.llama_decode(model.ctx, batch) != 0:
             print("Error decoding", flush=True)
             break
+
         print(n_cur)
         print(streams)
 
