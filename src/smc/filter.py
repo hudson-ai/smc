@@ -125,7 +125,6 @@ class Filter:
         for particle in self.particles:
             if not particle.active:
                 continue
-            # TODO: use mask and re-weigh the particles
             logits_ = llama_cpp.llama_get_logits(self.model.ctx)
             logits = np.ctypeslib.as_array(
                 logits_, shape=(self.model.n_vocab(),)
