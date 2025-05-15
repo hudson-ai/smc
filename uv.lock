@@ -445,7 +445,7 @@ wheels = [
 [[package]]
 name = "smc"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "guidance" },
     { name = "llama-cpp-python" },

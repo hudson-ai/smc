@@ -211,7 +211,7 @@ def main():
             r" Luke Wilson| Ben Kenobi| Anakin Skywalker| Darth Vader| Leia Organa"
         ),
         max_new_tokens=10,
-        N=200,
+        N=100,
         tau=0.5,
         temperature=0.7,
         stratified=True,
