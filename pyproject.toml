@@ -1,0 +1,18 @@
+[project]
+name = "smc"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Hudson Cooper", email = "hncooper96@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "llama-cpp-python>=0.3.9",
+    "llguidance>=0.7.19",
+    "numpy>=2.2.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
