@@ -24,6 +24,7 @@ class Filter:
         N: int,
         tau: float = 0.5,
         temperature: float = 1.0,
+        stratified: bool = False,
     ) -> None:
         tokens = model.tokenize(prompt)
         tokens_len = len(tokens)
@@ -60,6 +61,7 @@ class Filter:
         self.N = N
         self.tau = tau
         self.temperature = temperature
+        self.stratified = stratified
 
         g_model = GLlamacpp(model)
         ll_tokenizer = LLTokenizer(
@@ -97,7 +99,10 @@ class Filter:
         if N_eff < self.tau * self.N:
             log_probs = log_weights - log_W
             probs = np.exp(log_probs)
-            counts = np.random.multinomial(self.N, probs)
+            if self.stratified:
+                counts = stratified_resample(probs)
+            else:
+                counts = np.random.multinomial(self.N, probs)
             particles: list[Particle] = [None] * self.N  # type: ignore
             empty_indices = [i for i, ct in enumerate(counts) if ct == 0]
             for i, ct in enumerate(counts):
@@ -180,6 +185,13 @@ def softmax(logits: np.ndarray, temperature) -> np.ndarray:
     probs = exp_scores / np.sum(exp_scores)
     return probs
 
+def stratified_resample(probs: np.ndarray[float]) -> np.ndarray[int]:
+    N = probs.shape[0]
+    u = (np.arange(N) + np.random.rand(N)) / N
+    bins = np.cumsum(probs)
+    indices =  np.digitize(u, bins)
+    # histogram of indices
+    return np.bincount(indices, minlength=N)
 
 def main():
     repo_id = "unsloth/Qwen3-1.7B-GGUF"
@@ -202,6 +214,7 @@ def main():
         N=200,
         tau=0.5,
         temperature=0.7,
+        stratified=True,
     )
 
     while any(p.active for p in filter.particles):
