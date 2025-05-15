@@ -75,6 +75,17 @@ class Filter:
             for _ in range(N)
         ]
 
+    def sample(self) -> list[int]:
+        log_weights = [particle.log_weight for particle in self.particles]
+        log_W = np.logaddexp.reduce(log_weights)
+        log_probs = log_weights - log_W
+        probs = np.exp(log_probs)
+        index = int(np.random.choice(
+            range(self.N),
+            p=probs,
+        ))
+        return self.particles[index].tokens
+
     def resample(self) -> None:
         # Log-sum-exp trick for log(W) and log(sum(w_i^2))
         log_weights = [particle.log_weight for particle in self.particles]
@@ -202,3 +213,6 @@ def main():
 
 if __name__ == "__main__":
     filter = main()
+    print(
+        filter.model.detokenize(filter.prompt_tokens + filter.sample())
+    )
