@@ -162,8 +162,10 @@ class Filter:
             particle.tokens.append(new_token_id)
 
             p = softmax(logits, self.temperature)
-            z = mask @ p
-            particle.log_weight += np.log(z)
+            # Note: these are equivalent
+            # z = np.sum(np.where(mask > 0, p, 0))
+            log_z = np.log(p[new_token_id]) - np.log(q[new_token_id])
+            particle.log_weight += log_z
 
             if (
                 new_token_id == self.model.token_eos()
