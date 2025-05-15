@@ -1,7 +1,7 @@
 [project]
 name = "smc"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sequential Monte Carlo for constrained decoding"
 readme = "README.md"
 authors = [
     { name = "Hudson Cooper", email = "hncooper96@gmail.com" }
