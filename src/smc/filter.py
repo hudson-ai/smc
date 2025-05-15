@@ -94,9 +94,7 @@ class Filter:
                     # First copy: keep tokens in place
                     particles[i] = Particle(
                         tokens=self.particles[i].tokens,
-                        log_weight=self.particles[i].log_weight,
-                        # TODO: this is what the paper says but I think it's wrong?
-                        # log_weight=log_W-np.log(self.N),
+                        log_weight=log_W-np.log(self.N),
                         active=self.particles[i].active,
                         matcher=self.particles[i].matcher,
                     )
@@ -106,9 +104,7 @@ class Filter:
                     # !IMPORTANT! Copy innards here
                     particles[j] = Particle(
                         tokens=list(self.particles[i].tokens),
-                        log_weight=self.particles[i].log_weight,
-                        # TODO: this is what the paper says but I think it's wrong?
-                        # log_weight=log_W-np.log(self.N),
+                        log_weight=log_W-np.log(self.N),
                         active=self.particles[i].active,
                         matcher=self.particles[i].matcher.deep_copy(),
                     )
