@@ -2,13 +2,16 @@ from dataclasses import dataclass
 
 import llama_cpp
 import numpy as np
+from guidance.models import LlamaCpp as GLlamacpp
+from llguidance import LLMatcher, LLTokenizer, TokenizerWrapper
 
 
 @dataclass
 class Particle:
     tokens: list[int]
-    weight: float = 1.0
-    active: bool = True
+    log_weight: float
+    active: bool
+    matcher: LLMatcher
 
 
 class Filter:
@@ -16,6 +19,7 @@ class Filter:
         self,
         model: llama_cpp.Llama,
         prompt: bytes,
+        grammar: str,
         max_new_tokens: int,
         N: int,
         tau: float = 0.5,
@@ -56,20 +60,33 @@ class Filter:
         self.N = N
         self.tau = tau
         self.temperature = temperature
+
+        g_model = GLlamacpp(model)
+        ll_tokenizer = LLTokenizer(
+            TokenizerWrapper(g_model._interpreter.engine.tokenizer)
+        )  # Oof
         self.particles = [
-            Particle(tokens=[], weight=1.0, active=True) for _ in range(N)
+            Particle(
+                tokens=[],
+                log_weight=0.0,
+                active=True,
+                matcher=LLMatcher(tokenizer=ll_tokenizer, grammar=grammar),
+            )
+            for _ in range(N)
         ]
 
     def resample(self) -> None:
-        W = sum([particle.weight for particle in self.particles])
-        N_eff = W**2 / sum([particle.weight**2 for particle in self.particles])
+        # Log-sum-exp trick for log(W) and log(sum(w_i^2))
+        log_weights = [particle.log_weight for particle in self.particles]
+        log_W = np.logaddexp.reduce(log_weights)
+        log_W2 = np.logaddexp.reduce(2 * log_weights)
+        log_N_eff = 2 * log_W - log_W2
+        N_eff = np.exp(log_N_eff)
         # Resample if effective sample size is too small
         if N_eff < self.tau * self.N:
-            counts = np.random.multinomial(
-                n=self.N,
-                pvals=[particle.weight / W for particle in self.particles],
-            )
-            print(counts)
+            log_probs = log_weights - log_W
+            probs = np.exp(log_probs)
+            counts = np.random.multinomial(self.N, probs)
             particles: list[Particle] = [None] * self.N  # type: ignore
             empty_indices = [i for i, ct in enumerate(counts) if ct == 0]
             for i, ct in enumerate(counts):
@@ -77,18 +94,23 @@ class Filter:
                     # First copy: keep tokens in place
                     particles[i] = Particle(
                         tokens=self.particles[i].tokens,
-                        weight=1 / self.N,
+                        log_weight=self.particles[i].log_weight,
+                        # TODO: this is what the paper says but I think it's wrong?
+                        # log_weight=log_W-np.log(self.N),
                         active=self.particles[i].active,
+                        matcher=self.particles[i].matcher,
                     )
                 for _ in range(ct - 1):
                     assert empty_indices, "No empty indices left to fill"
                     j = empty_indices.pop()
-                    print(f"Copying particle {i} to index {j}")
+                    # !IMPORTANT! Copy innards here
                     particles[j] = Particle(
-                        # !IMPORTANT! Copy the tokens here
                         tokens=list(self.particles[i].tokens),
-                        weight=1 / self.N,
+                        log_weight=self.particles[i].log_weight,
+                        # TODO: this is what the paper says but I think it's wrong?
+                        # log_weight=log_W-np.log(self.N),
                         active=self.particles[i].active,
+                        matcher=self.particles[i].matcher.deep_copy(),
                     )
                     # Copy kv cache: i (source) -> j (target)
                     # TODO: just noticed that we're not referencing the batch
@@ -98,6 +120,7 @@ class Filter:
                     llama_cpp.llama_kv_cache_seq_cp(
                         self.model.ctx, i, j, 0, self.batch.n_tokens
                     )
+            assert not empty_indices, "Not all empty indices were filled"
             self.particles = particles
 
     def propagate(self) -> None:
@@ -111,33 +134,53 @@ class Filter:
             logits = np.ctypeslib.as_array(
                 logits_, shape=(self.model.n_vocab(),)
             ).copy()
-            scores = logits / self.temperature
-            probs = np.exp(scores - np.max(scores))
-            probs /= np.sum(probs)
+            byte_mask = particle.matcher.compute_logit_bias()
+            mask = np.frombuffer(byte_mask, dtype=np.uint8)
+            masked_logits = np.where(mask > 0, logits, -np.inf)
+            q = softmax(masked_logits, self.temperature)
             new_token_id = int(
                 np.random.choice(
                     range(self.model.n_vocab()),
-                    p=probs,
+                    p=q,
                 )
             )
+            assert mask[new_token_id] > 0
+            assert particle.matcher.consume_token(
+                new_token_id
+            ), f"Token {new_token_id} not in grammar"
+            particle.tokens.append(new_token_id)
+
+            # TODO: log weights are probably more stable
+            p = softmax(logits, self.temperature)
+            breakpoint()
+            z = mask @ p
+            particle.log_weight += np.log(z)
 
             if (
                 new_token_id == self.model.token_eos()
+                # TODO: make sure we're correctly reweighting in
+                # the different "done" conditions
                 or len(particle.tokens) == self.max_new_tokens
+                or particle.matcher.is_stopped()
             ):
                 particle.active = False
-                continue
-
-            particle.tokens.append(new_token_id)
 
         if llama_cpp.llama_decode(self.model.ctx, self.batch) != 0:
             raise RuntimeError("Could not decode the batch")
 
 
+def softmax(logits: np.ndarray, temperature) -> np.ndarray:
+    max_logit = np.max(logits[np.isfinite(logits)], initial=-np.inf)
+    stable_scores = (logits - max_logit) / temperature
+    exp_scores = np.exp(stable_scores)
+    probs = exp_scores / np.sum(exp_scores)
+    return probs
+
+
 def main():
     repo_id = "unsloth/Qwen3-1.7B-GGUF"
     filename = "Qwen3-1.7B-Q4_K_M.gguf"
-    n_ctx = 4098
+    n_ctx = 4096
 
     model: llama_cpp.Llama = llama_cpp.Llama.from_pretrained(
         repo_id=repo_id,
@@ -147,11 +190,14 @@ def main():
 
     filter = Filter(
         model=model,
-        prompt=b"Hello, my name is",
+        prompt=b"My favorite character from Star wars is ",
+        grammar=LLMatcher.grammar_from_regex(
+            r"Luke Wilson|Ben Kenobi|Anakin Skywalker|Darth Vader|Leia Organa"
+        ),
         max_new_tokens=10,
-        N=10,
-        tau=1.1,
-        temperature=1.0,
+        N=200,
+        tau=0.5,
+        temperature=0.7,
     )
 
     while any(p.active for p in filter.particles):
