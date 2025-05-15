@@ -150,9 +150,7 @@ class Filter:
             ), f"Token {new_token_id} not in grammar"
             particle.tokens.append(new_token_id)
 
-            # TODO: log weights are probably more stable
             p = softmax(logits, self.temperature)
-            breakpoint()
             z = mask @ p
             particle.log_weight += np.log(z)
 
