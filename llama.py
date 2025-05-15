@@ -15,14 +15,14 @@ model_obj: llama_cpp.Llama = llama_cpp.Llama.from_pretrained(
     n_ctx=n_ctx,
     n_batch=max(n_len, n_parallel),
     n_threads=1,
-    n_threads_batch=1
+    n_threads_batch=1,
 )
 
 model = model_obj.model
 tokenizer = model_obj.tokenizer_
 ctx = model_obj.ctx
 
-temperature = .7
+temperature = 0.7
 prompt = b"The quick brown fox"
 tokens = tokenizer.tokenize(prompt)
 tokens_len = len(tokens)
@@ -63,10 +63,12 @@ while n_cur <= n_len:
         scores = logits / temperature
         probs = np.exp(scores - np.max(scores))
         probs /= np.sum(probs)
-        new_token_id = int(np.random.choice(
-            range(model_obj.n_vocab()),
-            p=probs,
-        ))
+        new_token_id = int(
+            np.random.choice(
+                range(model_obj.n_vocab()),
+                p=probs,
+            )
+        )
 
         if new_token_id == llama_cpp.llama_token_eos(ctx) or n_cur == n_len:
             i_batch[i] = -1
