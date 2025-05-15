@@ -206,9 +206,9 @@ def main():
 
     filter = Filter(
         model=model,
-        prompt=b"My favorite character from Star wars is ",
+        prompt=b"My favorite character from Star Wars is",
         grammar=LLMatcher.grammar_from_regex(
-            r"Luke Wilson|Ben Kenobi|Anakin Skywalker|Darth Vader|Leia Organa"
+            r" Luke Wilson| Ben Kenobi| Anakin Skywalker| Darth Vader| Leia Organa"
         ),
         max_new_tokens=10,
         N=200,
