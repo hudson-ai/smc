@@ -1,6 +1,8 @@
+from dataclasses import dataclass
+
 import llama_cpp
 import numpy as np
-from dataclasses import dataclass
+
 
 @dataclass
 class Particle:
@@ -106,7 +108,9 @@ class Filter:
                 continue
             # TODO: use mask and re-weigh the particles
             logits_ = llama_cpp.llama_get_logits(self.model.ctx)
-            logits = np.ctypeslib.as_array(logits_, shape=(self.model.n_vocab(),)).copy()
+            logits = np.ctypeslib.as_array(
+                logits_, shape=(self.model.n_vocab(),)
+            ).copy()
             scores = logits / self.temperature
             probs = np.exp(scores - np.max(scores))
             probs /= np.sum(probs)
@@ -117,7 +121,10 @@ class Filter:
                 )
             )
 
-            if new_token_id == self.model.token_eos() or len(particle.tokens) == self.max_new_tokens:
+            if (
+                new_token_id == self.model.token_eos()
+                or len(particle.tokens) == self.max_new_tokens
+            ):
                 particle.active = False
                 continue
 
@@ -125,6 +132,7 @@ class Filter:
 
         if llama_cpp.llama_decode(self.model.ctx, self.batch) != 0:
             raise RuntimeError("Could not decode the batch")
+
 
 def main():
     repo_id = "unsloth/Qwen3-1.7B-GGUF"
@@ -151,6 +159,7 @@ def main():
         filter.resample()
 
     return filter
+
 
 if __name__ == "__main__":
     filter = main()
