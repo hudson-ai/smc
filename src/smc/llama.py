@@ -3,27 +3,26 @@ import numpy as np
 
 repo_id = "unsloth/Qwen3-1.7B-GGUF"
 filename = "Qwen3-1.7B-Q4_K_M.gguf"
-
-n_len = 100
-n_parallel = 2
-n_ctx = n_len * n_parallel
+n_ctx = 4098
 
 model_obj: llama_cpp.Llama = llama_cpp.Llama.from_pretrained(
     repo_id=repo_id,
     filename=filename,
-    seed=1234,
     n_ctx=n_ctx,
-    n_batch=max(n_len, n_parallel),
-    n_threads=1,
-    n_threads_batch=1,
 )
 
 model = model_obj.model
 tokenizer = model_obj.tokenizer_
 ctx = model_obj.ctx
 
-temperature = 0.7
 prompt = b"The quick brown fox"
+n_len = 100
+n_parallel = 2
+temperature = 0.7
+
+if n_len * n_parallel > n_ctx:
+    raise ValueError(f"n_len * n_parallel ({n_len * n_parallel}) > n_ctx ({n_ctx})")
+
 tokens = tokenizer.tokenize(prompt)
 tokens_len = len(tokens)
 
