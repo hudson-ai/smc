@@ -224,8 +224,8 @@ def stratified_resample(probs: np.ndarray[float]) -> np.ndarray[int]:
 
 
 def main():
-    repo_id = "unsloth/Qwen3-1.7B-GGUF"
-    filename = "Qwen3-1.7B-Q4_K_M.gguf"
+    repo_id = "QuantFactory/Meta-Llama-3-8B-GGUF"
+    filename = "Meta-Llama-3-8B.Q8_0.gguf"
     n_ctx = 4096
 
     model: llama_cpp.Llama = llama_cpp.Llama.from_pretrained(
