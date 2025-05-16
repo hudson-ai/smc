@@ -57,6 +57,8 @@ class Filter:
         self.prompt = prompt
         self.prompt_tokens = tokens
         self.batch = batch
+        self.n_curr = batch.n_tokens
+        self.i_batch = [batch.n_tokens - 1] * N
         self.max_new_tokens = max_new_tokens
         self.N = N
         self.tau = tau
@@ -82,10 +84,12 @@ class Filter:
         log_W = np.logaddexp.reduce(log_weights)
         log_probs = log_weights - log_W
         probs = np.exp(log_probs)
-        index = int(np.random.choice(
-            range(self.N),
-            p=probs,
-        ))
+        index = int(
+            np.random.choice(
+                range(self.N),
+                p=probs,
+            )
+        )
         return self.particles[index].tokens
 
     def resample(self) -> None:
@@ -110,7 +114,7 @@ class Filter:
                     # First copy: keep tokens in place
                     particles[i] = Particle(
                         tokens=self.particles[i].tokens,
-                        log_weight=log_W-np.log(self.N),
+                        log_weight=log_W - np.log(self.N),
                         active=self.particles[i].active,
                         matcher=self.particles[i].matcher,
                     )
@@ -120,7 +124,7 @@ class Filter:
                     # !IMPORTANT! Copy innards here
                     particles[j] = Particle(
                         tokens=list(self.particles[i].tokens),
-                        log_weight=log_W-np.log(self.N),
+                        log_weight=log_W - np.log(self.N),
                         active=self.particles[i].active,
                         matcher=self.particles[i].matcher.deep_copy(),
                     )
@@ -138,7 +142,11 @@ class Filter:
     def propagate(self) -> None:
         if not any(p.active for p in self.particles):
             raise RuntimeError("No active particles left")
-        for particle in self.particles:
+
+        self.batch.n_tokens = 0
+        for i, particle in enumerate(self.particles):
+            if self.i_batch[i] < 0:
+                assert not particle.active
             if not particle.active:
                 continue
             logits_ = llama_cpp.llama_get_logits(self.model.ctx)
@@ -171,11 +179,28 @@ class Filter:
                 new_token_id == self.model.token_eos()
                 # TODO: make sure we're correctly reweighting in
                 # the different "done" conditions
-                or len(particle.tokens) == self.max_new_tokens
+                or self.n_curr == self.max_new_tokens + len(self.prompt_tokens)
                 or particle.matcher.is_stopped()
+                # or self.batch.n_tokens == 0
             ):
+                self.i_batch[i] = -1
                 particle.active = False
+                continue
 
+            self.batch.token[self.batch.n_tokens] = new_token_id
+            self.batch.pos[self.batch.n_tokens] = self.n_curr
+            self.batch.seq_id[self.batch.n_tokens][0] = i
+            self.batch.n_seq_id[self.batch.n_tokens] = 1
+            self.batch.logits[self.batch.n_tokens] = True
+
+            self.i_batch[i] = self.batch.n_tokens
+            self.batch.n_tokens += 1
+
+        if self.batch.n_tokens == 0:
+            assert all(not particle.active for particle in self.particles)
+            return
+
+        self.n_curr += 1
         if llama_cpp.llama_decode(self.model.ctx, self.batch) != 0:
             raise RuntimeError("Could not decode the batch")
 
@@ -187,13 +212,15 @@ def softmax(logits: np.ndarray, temperature) -> np.ndarray:
     probs = exp_scores / np.sum(exp_scores)
     return probs
 
+
 def stratified_resample(probs: np.ndarray[float]) -> np.ndarray[int]:
     N = probs.shape[0]
     u = (np.arange(N) + np.random.rand(N)) / N
     bins = np.cumsum(probs)
-    indices =  np.digitize(u, bins)
+    indices = np.digitize(u, bins)
     # histogram of indices
     return np.bincount(indices, minlength=N)
+
 
 def main():
     repo_id = "unsloth/Qwen3-1.7B-GGUF"
@@ -208,12 +235,12 @@ def main():
 
     filter = Filter(
         model=model,
-        prompt=b"My favorite character from Star Wars is",
+        prompt=b"<|im_start|>user\nWhat is the financial news today?\n<|im_end|><|im_start|>assistant\nThe Fed says",
         grammar=LLMatcher.grammar_from_regex(
-            r" Luke Wilson| Ben Kenobi| Anakin Skywalker| Darth Vader| Leia Organa"
+            r".*",
         ),
         max_new_tokens=10,
-        N=100,
+        N=1,
         tau=0.5,
         temperature=0.7,
         stratified=True,
@@ -228,6 +255,4 @@ def main():
 
 if __name__ == "__main__":
     filter = main()
-    print(
-        filter.model.detokenize(filter.prompt_tokens + filter.sample())
-    )
+    print(filter.model.detokenize(filter.prompt_tokens + filter.sample()))
