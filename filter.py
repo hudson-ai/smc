@@ -136,6 +136,7 @@ class Filter:
                     llama_cpp.llama_kv_cache_seq_cp(
                         self.model.ctx, i, j, 0, self.batch.n_tokens
                     )
+                    self.i_batch[j] = self.i_batch[i]
             assert not empty_indices, "Not all empty indices were filled"
             self.particles = particles
 
@@ -236,11 +237,9 @@ def main():
     filter = Filter(
         model=model,
         prompt=b"<|im_start|>user\nWhat is the financial news today?\n<|im_end|><|im_start|>assistant\nThe Fed says",
-        grammar=LLMatcher.grammar_from_regex(
-            r".*",
-        ),
-        max_new_tokens=10,
-        N=1,
+        grammar=LLMatcher.grammar_from_regex(r"([.,?!]? \w{1,5})+"),
+        max_new_tokens=50,
+        N=5,
         tau=0.5,
         temperature=0.7,
         stratified=True,
